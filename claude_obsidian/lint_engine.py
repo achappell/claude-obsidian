@@ -61,6 +61,16 @@ _IGNORED_WALK_DIRS = {
     ".pytest_cache",
     "__pycache__",
     "node_modules",
+    # Flat-layout vault support directories are not wiki content.
+    ".raw",
+    ".trash",
+    ".claude",
+    ".claudian",
+    ".gemini",
+    ".pocket",
+    ".qmd",
+    ".superpowers",
+    ".worktrees",
 }
 _ORPHAN_EXCLUDED_NAMES = {
     "_index.md",

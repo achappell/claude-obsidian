@@ -266,6 +266,45 @@ tags:
             [item["target"] for item in report["allowlisted_dangling_links"]],
         )
 
+    def test_flattened_vault_ignores_support_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "flattened"
+            for name in (
+                ".raw",
+                ".trash",
+                ".claude",
+                ".claudian",
+                ".gemini",
+                ".pocket",
+                ".qmd",
+                ".superpowers",
+                ".worktrees",
+            ):
+                support_directory = root / name
+                support_directory.mkdir(parents=True)
+                (support_directory / "Not a wiki page.md").write_text(
+                    "# Support data\n", encoding="utf-8"
+                )
+            (root / "index.md").write_text(
+                "---\n"
+                "title: Index\n"
+                "type: meta\n"
+                "status: evergreen\n"
+                "created: 2026-07-12\n"
+                "updated: 2026-07-12\n"
+                "tags:\n"
+                "  - meta\n"
+                "---\n\n"
+                "# Index\n",
+                encoding="utf-8",
+            )
+
+            report = lint_engine.lint_vault(root, as_of="2026-07-12")
+
+        self.assertEqual(1, report["summary"]["pages_scanned"])
+        self.assertEqual([], report["missing_frontmatter"])
+        self.assertEqual([], report["orphans"])
+
     def test_orphans_frontmatter_empty_sections_and_allowlist(self) -> None:
         self.assertEqual([{"path": "wiki/concepts/Orphan.md"}], self.report["orphans"])
         self.assertEqual(1, len(self.report["missing_frontmatter"]))
