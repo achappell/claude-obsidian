@@ -3238,14 +3238,20 @@ def _validate_operation_write_scope(
             "WRITE_SCOPE_VIOLATION",
             f"base operations may write only wiki .base files: {relative}",
         )
-    if operation_type == "canvas" and not (
+    wrapped_canvas_path = (
         (relative.startswith("wiki/canvases/") and relative.endswith(".canvas"))
         or relative == "wiki/canvases/index.md"
-    ):
+    )
+    flat_canvas_path = flat_vault and (
+        (relative.startswith("canvases/") and relative.endswith(".canvas"))
+        or relative == "canvases/index.md"
+    )
+    if operation_type == "canvas" and not (wrapped_canvas_path or flat_canvas_path):
         raise TransactionValidationError(
             "WRITE_SCOPE_VIOLATION",
             "canvas operations may write only wiki/canvases/*.canvas "
-            f"and wiki/canvases/index.md: {relative}",
+            "and wiki/canvases/index.md, or flat-vault canvases/*.canvas "
+            f"and canvases/index.md: {relative}",
         )
     if operation_type == "fold" and not (
         (

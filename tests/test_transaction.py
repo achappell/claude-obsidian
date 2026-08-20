@@ -759,6 +759,44 @@ def test_flat_lint_fix_can_recover_a_prior_transaction_journal() -> None:
         assert (vault / "Second.md").read_text(encoding="utf-8") == "second\n"
 
 
+def test_canvas_can_create_in_flat_vault_and_recover_prior_journal() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        vault = Path(td) / "flat-vault"
+        vault.mkdir()
+        (vault / ".obsidian").mkdir()
+        (vault / ".raw").mkdir()
+        (vault / "canvases").mkdir()
+        first = bundle(
+            "flat-canvas-first",
+            [
+                {
+                    "path": "canvases/first.canvas",
+                    "mode": "create",
+                    "content": '{"nodes": [], "edges": []}\n',
+                }
+            ],
+            operation_type="canvas",
+        )
+        apply_bundle(vault, first)
+
+        second = bundle(
+            "flat-canvas-second",
+            [
+                {
+                    "path": "canvases/second.canvas",
+                    "mode": "create",
+                    "content": '{"nodes": [], "edges": []}\n',
+                }
+            ],
+            operation_type="canvas",
+        )
+
+        result = apply_bundle(vault, second)
+
+        assert result["status"] == "complete"
+        assert (vault / "canvases/second.canvas").is_file()
+
+
 def test_operation_types_enforce_least_privilege_path_contracts() -> None:
     with tempfile.TemporaryDirectory() as td:
         vault = make_vault(Path(td) / "vault")
@@ -2634,6 +2672,7 @@ def main() -> None:
     test_lint_fix_can_replace_markdown_in_flat_vault()
     test_flat_lint_fix_rejects_support_and_wrapper_paths()
     test_flat_lint_fix_can_recover_a_prior_transaction_journal()
+    test_canvas_can_create_in_flat_vault_and_recover_prior_journal()
     test_operation_types_enforce_least_privilege_path_contracts()
     test_casefold_aliases_and_bundle_collisions_fail_portably()
     test_transaction_size_limits_match_recovery_and_reject_nonregular_content()
