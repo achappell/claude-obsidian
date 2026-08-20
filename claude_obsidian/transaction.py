@@ -95,6 +95,30 @@ _WIKI_ONLY_OPERATIONS = {
     "markdown",
     "generic",
 }
+# Flat vaults keep wiki Markdown at the vault root. These namespaces remain
+# product/support data even when the wiki layer is flattened.
+_FLAT_VAULT_MARKER_DIRS = (".obsidian", ".raw")
+_FLAT_VAULT_NON_WIKI_ROOTS = frozenset(
+    {
+        ".cache",
+        ".claude",
+        ".claudian",
+        ".gemini",
+        ".git",
+        ".obsidian",
+        ".pocket",
+        ".pytest_cache",
+        ".qmd",
+        ".raw",
+        ".superpowers",
+        ".trash",
+        ".vault-meta",
+        ".worktrees",
+        "__pycache__",
+        "node_modules",
+        "wiki",
+    }
+)
 _WIKI_AND_RAW_OPERATIONS = {"ingest", "autoresearch"}
 _MANAGED_METADATA_PATHS = {
     ".raw/.manifest.json",
@@ -3127,11 +3151,37 @@ def _is_reserved_write_path(relative: str) -> bool:
     )
 
 
+def _is_real_directory(path: Path) -> bool:
+    try:
+        return stat.S_ISDIR(path.lstat().st_mode)
+    except OSError:
+        return False
+
+
+def _is_flat_vault_root(vault_root: Path) -> bool:
+    """Recognize a flat wiki only when its product markers are directories."""
+
+    if _is_real_directory(vault_root / "wiki"):
+        return False
+    return any(
+        _is_real_directory(vault_root / marker)
+        for marker in _FLAT_VAULT_MARKER_DIRS
+    )
+
+
+def _is_flat_lint_fix_path(relative: str) -> bool:
+    parts = PurePosixPath(relative).parts
+    return bool(parts) and relative.casefold().endswith(".md") and (
+        _portable_name_key(parts[0]) not in _FLAT_VAULT_NON_WIKI_ROOTS
+    )
+
+
 def _validate_operation_write_scope(
     operation_type: str,
     relative: str,
     *,
     write_mode: Any,
+    flat_vault: bool = False,
 ) -> None:
     """Enforce the declared workflow's writable content domain."""
 
@@ -3209,11 +3259,23 @@ def _validate_operation_write_scope(
             "WRITE_SCOPE_VIOLATION",
             f"fold operations may write only one fold page, wiki/index.md, and wiki/log.md: {relative}",
         )
-    if operation_type in _WIKI_ONLY_OPERATIONS and not relative.startswith("wiki/"):
-        raise TransactionValidationError(
-            "WRITE_SCOPE_VIOLATION",
-            f"{operation_type} operations may write only wiki content: {relative}",
+    if operation_type in _WIKI_ONLY_OPERATIONS:
+        wrapped_wiki_path = relative.startswith("wiki/")
+        flat_lint_path = (
+            operation_type == "lint-fix"
+            and flat_vault
+            and _is_flat_lint_fix_path(relative)
         )
+        if not wrapped_wiki_path and not flat_lint_path:
+            raise TransactionValidationError(
+                "WRITE_SCOPE_VIOLATION",
+                f"{operation_type} operations may write only wiki content: {relative}",
+            )
+        if flat_vault and operation_type == "lint-fix" and wrapped_wiki_path:
+            raise TransactionValidationError(
+                "WRITE_SCOPE_VIOLATION",
+                f"lint-fix operations may write flat-vault Markdown at the root: {relative}",
+            )
     if operation_type in _WIKI_AND_RAW_OPERATIONS and not (
         relative.startswith("wiki/") or relative.startswith(".raw/")
     ):
@@ -3332,6 +3394,7 @@ def _prepare_writes(
     seen: set[str] = set()
     seen_casefold: dict[str, str] = {}
     prepared: list[PreparedWrite] = []
+    flat_vault = _is_flat_vault_root(vault_root)
     total_content_bytes = 0
     total_backup_bytes = 0
     if backups_fd is None:
@@ -3389,6 +3452,7 @@ def _prepare_writes(
             str(bundle.get("operation_type")),
             normalized,
             write_mode=mode,
+            flat_vault=flat_vault,
         )
         if (
             _portable_name_key(normalized).startswith(".raw/")

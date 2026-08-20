@@ -675,6 +675,62 @@ def test_product_runtime_and_declared_operation_scopes_are_enforced() -> None:
         assert inspect_bundle(vault, base_operation)["valid"] is True
 
 
+def test_lint_fix_can_replace_markdown_in_flat_vault() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        vault = Path(td) / "flat-vault"
+        vault.mkdir()
+        (vault / ".obsidian").mkdir()
+        (vault / ".raw").mkdir()
+        target = vault / "Welcome.md"
+        target.write_text("old\n", encoding="utf-8")
+        operation = bundle(
+            "flat-lint-fix",
+            [{"path": "Welcome.md", "mode": "replace", "content": "new\n"}],
+            {"Welcome.md": sha256_file(target)},
+            operation_type="lint-fix",
+        )
+
+        plan = inspect_bundle(vault, operation)
+
+        assert plan["valid"] is True
+        assert plan["changed_paths"] == ["Welcome.md"]
+
+
+def test_flat_lint_fix_rejects_support_and_wrapper_paths() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        vault = Path(td) / "flat-vault"
+        vault.mkdir()
+        (vault / ".obsidian").mkdir()
+        (vault / ".raw").mkdir()
+        for index, relative in enumerate(
+            (".raw/payload.md", ".obsidian/plugin.md", ".claude/state.md", "wiki/page.md")
+        ):
+            operation = bundle(
+                f"flat-lint-fix-rejected-{index}",
+                [{"path": relative, "mode": "create", "content": "blocked\n"}],
+                operation_type="lint-fix",
+            )
+            try:
+                inspect_bundle(vault, operation)
+            except TransactionValidationError as exc:
+                assert exc.code in {"RESERVED_WRITE_PATH", "WRITE_SCOPE_VIOLATION"}
+            else:
+                raise AssertionError(f"flat support path must be rejected: {relative}")
+
+        wrapped = make_vault(Path(td) / "wrapped-vault")
+        operation = bundle(
+            "wrapped-lint-fix-rejected",
+            [{"path": "Notes.md", "mode": "create", "content": "blocked\n"}],
+            operation_type="lint-fix",
+        )
+        try:
+            inspect_bundle(wrapped, operation)
+        except TransactionValidationError as exc:
+            assert exc.code == "WRITE_SCOPE_VIOLATION"
+        else:
+            raise AssertionError("wrapped vault root path must be rejected")
+
+
 def test_operation_types_enforce_least_privilege_path_contracts() -> None:
     with tempfile.TemporaryDirectory() as td:
         vault = make_vault(Path(td) / "vault")
@@ -2547,6 +2603,8 @@ def main() -> None:
     test_runtime_symlinks_and_reserved_lock_descendants_fail_closed()
     test_all_runtime_lock_cache_and_temp_paths_are_reserved()
     test_product_runtime_and_declared_operation_scopes_are_enforced()
+    test_lint_fix_can_replace_markdown_in_flat_vault()
+    test_flat_lint_fix_rejects_support_and_wrapper_paths()
     test_operation_types_enforce_least_privilege_path_contracts()
     test_casefold_aliases_and_bundle_collisions_fail_portably()
     test_transaction_size_limits_match_recovery_and_reject_nonregular_content()
