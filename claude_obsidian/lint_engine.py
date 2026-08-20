@@ -398,7 +398,8 @@ def _wiki_location(root: Path) -> tuple[Path, str]:
         return candidate, "wiki"
     if root.name.casefold() == "wiki" and root.is_dir():
         return root, "."
-    return candidate, "wiki"
+    # A flattened vault has the wiki layer at its root.
+    return root, "."
 
 
 def _split_fragment(target: str) -> tuple[str, str | None, str | None]:
@@ -890,9 +891,10 @@ def lint_vault(
 ) -> dict[str, Any]:
     """Return a deterministic, JSON-serializable lint report.
 
-    ``root`` is normally the vault directory containing ``wiki/``.  Passing a
-    directory named ``wiki`` is also supported.  Symlinked files and symlinked
-    directories are not followed.  The function performs no filesystem writes.
+    ``root`` may be a vault directory containing ``wiki/``, a directory named
+    ``wiki``, or a flattened vault whose root is the wiki layer.  Symlinked
+    files and symlinked directories are not followed.  The function performs
+    no filesystem writes.
     """
 
     root_path = Path(root).expanduser()
@@ -900,7 +902,11 @@ def lint_vault(
         raise ValueError(f"vault root is not a directory: {root_path}")
     root_path = root_path.resolve()
     wiki_dir, wiki_prefix = _wiki_location(root_path)
-    vault_root = root_path.parent if wiki_prefix == "." else root_path
+    vault_root = (
+        root_path.parent
+        if wiki_prefix == "." and root_path.name.casefold() == "wiki"
+        else root_path
+    )
     if as_of is None:
         audit_date = datetime.now(timezone.utc).date()
     elif isinstance(as_of, datetime):

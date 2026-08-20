@@ -217,6 +217,55 @@ tags:
         self.assertEqual(1, len(report["ambiguous_targets"]))
         self.assertEqual("_index", report["ambiguous_targets"][0]["target"])
 
+    def test_flattened_vault_root_is_linted_and_uses_root_allowlist(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "flattened"
+            (root / ".vault-meta").mkdir(parents=True)
+            (root / ".vault-meta" / "lint-allowlist.json").write_text(
+                json.dumps({"dangling_links": ["Future Page"]}),
+                encoding="utf-8",
+            )
+            (root / "concepts").mkdir()
+            (root / "index.md").write_text(
+                "---\n"
+                "title: Index\n"
+                "type: meta\n"
+                "status: evergreen\n"
+                "created: 2026-07-12\n"
+                "updated: 2026-07-12\n"
+                "tags:\n"
+                "  - meta\n"
+                "---\n\n"
+                "# Index\n\n"
+                "- [[concepts/Alpha]]\n"
+                "- [[Future Page]]\n",
+                encoding="utf-8",
+            )
+            (root / "concepts" / "Alpha.md").write_text(
+                "---\n"
+                "title: Alpha\n"
+                "type: concept\n"
+                "status: evergreen\n"
+                "created: 2026-07-12\n"
+                "updated: 2026-07-12\n"
+                "tags:\n"
+                "  - concept\n"
+                "---\n\n"
+                "# Alpha\n",
+                encoding="utf-8",
+            )
+
+            report = lint_engine.lint_vault(root, as_of="2026-07-12")
+
+        self.assertEqual(2, report["summary"]["pages_scanned"])
+        self.assertEqual(2, report["summary"]["links_scanned"])
+        self.assertEqual([], report["dead_links"])
+        self.assertEqual([], report["missing_frontmatter"])
+        self.assertEqual(
+            ["Future Page"],
+            [item["target"] for item in report["allowlisted_dangling_links"]],
+        )
+
     def test_orphans_frontmatter_empty_sections_and_allowlist(self) -> None:
         self.assertEqual([{"path": "wiki/concepts/Orphan.md"}], self.report["orphans"])
         self.assertEqual(1, len(self.report["missing_frontmatter"]))
