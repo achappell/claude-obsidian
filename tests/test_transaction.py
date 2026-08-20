@@ -731,6 +731,34 @@ def test_flat_lint_fix_rejects_support_and_wrapper_paths() -> None:
             raise AssertionError("wrapped vault root path must be rejected")
 
 
+def test_flat_lint_fix_can_recover_a_prior_transaction_journal() -> None:
+    with tempfile.TemporaryDirectory() as td:
+        vault = Path(td) / "flat-vault"
+        vault.mkdir()
+        (vault / ".obsidian").mkdir()
+        (vault / ".raw").mkdir()
+        first_target = vault / "First.md"
+        first_target.write_text("old\n", encoding="utf-8")
+        first = bundle(
+            "flat-lint-fix-first",
+            [{"path": "First.md", "mode": "replace", "content": "new\n"}],
+            {"First.md": sha256_file(first_target)},
+            operation_type="lint-fix",
+        )
+        apply_bundle(vault, first)
+
+        second = bundle(
+            "flat-lint-fix-second",
+            [{"path": "Second.md", "mode": "create", "content": "second\n"}],
+            operation_type="lint-fix",
+        )
+
+        result = apply_bundle(vault, second)
+
+        assert result["status"] == "complete"
+        assert (vault / "Second.md").read_text(encoding="utf-8") == "second\n"
+
+
 def test_operation_types_enforce_least_privilege_path_contracts() -> None:
     with tempfile.TemporaryDirectory() as td:
         vault = make_vault(Path(td) / "vault")
@@ -2605,6 +2633,7 @@ def main() -> None:
     test_product_runtime_and_declared_operation_scopes_are_enforced()
     test_lint_fix_can_replace_markdown_in_flat_vault()
     test_flat_lint_fix_rejects_support_and_wrapper_paths()
+    test_flat_lint_fix_can_recover_a_prior_transaction_journal()
     test_operation_types_enforce_least_privilege_path_contracts()
     test_casefold_aliases_and_bundle_collisions_fail_portably()
     test_transaction_size_limits_match_recovery_and_reject_nonregular_content()

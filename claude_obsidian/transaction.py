@@ -3902,7 +3902,10 @@ def _validated_recovery_writes(
             ) from exc
         try:
             _validate_operation_write_scope(
-                str(operation_type), relative, write_mode=mode
+                str(operation_type),
+                relative,
+                write_mode=mode,
+                flat_vault=_is_flat_vault_root(vault_root),
             )
         except TransactionError as exc:
             raise TransactionRecoveryError(
